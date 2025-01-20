@@ -47,6 +47,7 @@ export function Chat() {
         // Clear models when disconnected
         setModels([]);
         setSelectedModel('');
+        setError(null); // Clear error message when disconnected
       }
     });
 
@@ -193,17 +194,22 @@ export function Chat() {
       const data = await response.json();
       setModels(data.models || []);
     } catch (error) {
-      const errorMessage = 'Failed to fetch available models. Please check your endpoint configuration.';
-      setError(errorMessage);
-      logError(errorMessage, {
-        endpoint,
-        error: error instanceof Error ? {
-          message: error.message,
-          name: error.name,
-          stack: error.stack
-        } : String(error)
-      });
-      console.error('Error fetching models:', error);
+      const health = endpointManager.getHealth(endpoint);
+      if (health?.isConnected) {
+        const errorMessage = 'Failed to fetch available models. Please check your endpoint configuration.';
+        setError(errorMessage);
+        logError(errorMessage, {
+          endpoint,
+          error: error instanceof Error ? {
+            message: error.message,
+            name: error.name,
+            stack: error.stack
+          } : String(error)
+        });
+        console.error('Error fetching models:', error);
+      } else {
+        setError(null); // Clear error message if disconnected
+      }
     } finally {
       setLoadingModels(false);
     }

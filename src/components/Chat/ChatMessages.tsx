@@ -2,6 +2,8 @@ import React, { useRef, useEffect } from 'react';
 import { Bot, User, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../../types';
+import { endpointManager } from '../../lib/endpoint';
+import { useChatStore } from '../../lib/store';
 
 interface ChatMessagesProps {
   messages: Message[];
@@ -10,6 +12,9 @@ interface ChatMessagesProps {
 
 export function ChatMessages({ messages, error }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { ollamaEndpoint } = useChatStore();
+  const health = ollamaEndpoint ? endpointManager.getHealth(ollamaEndpoint) : null;
+  const isDisconnected = !health?.isConnected;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -17,7 +22,7 @@ export function ChatMessages({ messages, error }: ChatMessagesProps) {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {error && (
+      {error && !isDisconnected && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4">
           <div className="flex">
             <div className="flex-shrink-0">

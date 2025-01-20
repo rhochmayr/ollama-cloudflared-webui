@@ -1,5 +1,7 @@
 # Ollama Cloudflared WebUI
-A React and Express-based chat application leveraging Supabase and the Ollama API for seamless communication and data management.
+This WebUI is part a personal Proof of Concept (PoC) project for the Lilypad Network.
+The goal of this PoC is to demonstrate the feasibility of using Cloudflared (Quicktunnels) to tunnel traffic from a Lilypad module to a cloud-based service.
+In this instance we are requesting on-demand Ollama endpoints on a GPU enabled Lilypad Resource Provider and establish a connection to the Chat WebUI.
 
 ## Table of Contents
 - [Features](#features)
@@ -18,6 +20,7 @@ A React and Express-based chat application leveraging Supabase and the Ollama AP
 - Authentication using Supabase
 - Connection status monitoring
 - Settings and configuration management
+- Requesting Ollama instances on Lilypad network
 - Error handling and logging
 
 ## Technologies Used

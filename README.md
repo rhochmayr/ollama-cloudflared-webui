@@ -11,6 +11,12 @@ In this instance we are requesting on-demand Ollama endpoints on a GPU enabled L
   - [Installation](#installation)
   - [Configuration](#configuration)
   - [Running the Application](#running-the-application)
+- [How It Works](#how-it-works)
+  - [Instance Request Flow](#instance-request-flow)
+  - [Sequence Diagram](#sequence-diagram)
+- [Instance Setup](#instance-setup)
+  - [Local Docker Setup](#local-docker-setup)
+  - [Lilypad Network Setup](#lilypad-network-setup)
 - [Project Structure](#project-structure)
 - [Contributing](#contributing)
 - [License](#license)
@@ -20,7 +26,9 @@ In this instance we are requesting on-demand Ollama endpoints on a GPU enabled L
 - Authentication using Supabase
 - Connection status monitoring
 - Settings and configuration management
-- Requesting Ollama instances on Lilypad network
+- Automated Ollama instance provisioning via Lilypad network
+- Real-time instance status tracking
+- Dynamic endpoint configuration
 - Error handling and logging
 
 ## Technologies Used
@@ -68,6 +76,76 @@ npm run dev
 ```
 
 The application will be available at `http://localhost:5173`.
+
+## How It Works
+
+### Instance Request Flow
+1. User authenticates with the WebUI using Supabase
+2. User requests a new Ollama instance through the interface
+3. WebUI generates either a Docker command or Lilypad command based on user preferences
+4. User executes the command on their machine or Lilypad network
+5. The started instance registers itself with Supabase
+6. WebUI detects the available endpoint and enables chat functionality
+
+### Sequence Diagram
+```mermaid
+sequenceDiagram
+    participant User
+    participant WebUI
+    participant Supabase
+    participant OllamaInstance
+    participant LilypadNetwork
+
+    User->>WebUI: Login
+    WebUI->>Supabase: Authenticate
+    User->>WebUI: Request Ollama Instance
+    WebUI-->>User: Generate Command
+    
+    alt Lilypad Deployment
+        User->>LilypadNetwork: Execute Lilypad Command
+        LilypadNetwork->>OllamaInstance: Start Instance
+    else Local Deployment
+        User->>OllamaInstance: Execute Docker Command
+    end
+
+    OllamaInstance->>Supabase: Register Endpoint
+    Supabase-->>WebUI: Notify Instance Ready
+    WebUI-->>User: Enable Chat Interface
+    
+    loop Chat Session
+        User->>WebUI: Send Message
+        WebUI->>OllamaInstance: Forward to LLM
+        OllamaInstance-->>WebUI: Stream Response
+        WebUI-->>User: Display Response
+    end
+```
+
+## Instance Setup
+
+### Local Docker Setup
+When using the local Docker setup, the WebUI will generate a command like:
+```bash
+docker run -d --name ollama-instance \
+  -e SUPABASE_URL=<your-supabase-url> \
+  -e INSTANCE_ID=<generated-id> \
+  ghcr.io/yourusername/ollama-cloudflared:latest
+```
+
+### Lilypad Network Setup
+For Lilypad network deployment, you'll receive a command like:
+```bash
+lilypad run \
+  --module ollama-cloudflared \
+  --env SUPABASE_URL=<your-supabase-url> \
+  --env INSTANCE_ID=<generated-id> \
+  --gpu 1
+```
+
+The instance will automatically:
+1. Start the Ollama server
+2. Establish a Cloudflare tunnel
+3. Register the endpoint in Supabase
+4. Begin accepting chat requests
 
 ## Project Structure
 ```

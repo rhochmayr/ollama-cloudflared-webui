@@ -125,20 +125,21 @@ sequenceDiagram
 ### Local Docker Setup
 When using the local Docker setup, the WebUI will generate a command like:
 ```bash
-docker run -d --name ollama-instance \
-  -e SUPABASE_URL=<your-supabase-url> \
+docker run -d --gpus=all \
+  -e SUPABASE_URL=https://<your instance>.supabase.co \
   -e INSTANCE_ID=<generated-id> \
-  ghcr.io/yourusername/ollama-cloudflared:latest
+  -e SUPABASE_ANON_KEY=<anon-key> \
+  ghcr.io/rhochmayr/ollama-cloudflared:latest
 ```
 
 ### Lilypad Network Setup
 For Lilypad network deployment, you'll receive a command like:
 ```bash
-lilypad run \
-  --module ollama-cloudflared \
-  --env SUPABASE_URL=<your-supabase-url> \
-  --env INSTANCE_ID=<generated-id> \
-  --gpu 1
+lilypad run --target <0x network enabled node address> \
+  github.com/rhochmayr/ollama-cloudflared:0.1.0 \
+  -i SUPABASE_INSTANCE_ID="<generated-id>" \
+  -i SUPABASE_URL="https://<your instance>.supabase.co" \
+  -i SUPABASE_ANON_KEY=<anon_key>
 ```
 
 The instance will automatically:

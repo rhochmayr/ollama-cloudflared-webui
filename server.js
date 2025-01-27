@@ -4,13 +4,34 @@ import { createServer } from 'vite';
 import fetch from 'node-fetch';
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, resolve } from 'path';
 import { config } from 'dotenv';
 
-// Load environment variables from .env file
+// Set up paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-config({ path: `${__dirname}/.env` });
+
+// Load environment variables with fallbacks
+const result = config({
+  path: resolve(__dirname, '.env'),
+});
+
+// If .env wasn't found, try .env.local
+if (result.error) {
+  config({
+    path: resolve(__dirname, '.env.local'),
+  });
+}
+
+// Validate required environment variables
+const requiredEnvVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error('Missing required environment variables:', missingEnvVars.join(', '));
+  console.error('Please check your .env or .env.local file');
+  process.exit(1);
+}
 
 // Initialize Supabase client
 const supabase = createClient(

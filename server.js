@@ -2,6 +2,21 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'vite';
 import fetch from 'node-fetch';
+import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import { config } from 'dotenv';
+
+// Load environment variables from .env file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+config({ path: `${__dirname}/.env` });
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || '',
+  process.env.VITE_SUPABASE_ANON_KEY || ''
+);
 
 const app = express();
 
@@ -14,6 +29,48 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Endpoint for updating instance status
+app.post('/api/proxy/instance-status', async (req, res) => {
+  const { endpoint, status, error } = req.body;
+
+  if (!endpoint || !status) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    // Find the instance by endpoint
+    const { data: instances, error: findError } = await supabase
+      .from('ollama_instances')
+      .select('id')
+      .eq('endpoint', endpoint)
+      .limit(1);
+
+    if (findError) throw findError;
+    if (!instances || instances.length === 0) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+
+    // Update the instance status
+    const { data: updateData, error: updateError } = await supabase
+      .from('ollama_instances')
+      .update({ 
+        status, 
+        error: error || null  // Ensure error is null when not provided
+      })
+      .eq('id', instances[0].id);
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, data: updateData });
+  } catch (error) {
+    console.error('Failed to update instance status:', error);
+    res.status(500).json({ 
+      error: 'Failed to update instance status',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
 
 // Improved error handling middleware
 const errorHandler = (err, req, res, next) => {

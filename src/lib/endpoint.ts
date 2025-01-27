@@ -1,23 +1,72 @@
 import { debounce } from './utils';
+import { supabase } from './supabase';
 import type { EndpointHealth } from '../types';
 
 const HEALTH_CHECK_INTERVAL = 3000; // 3 seconds
 const HEALTH_CHECK_TIMEOUT = 1000; // 1 second timeout
 const INACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes
-const MAX_CONSECUTIVE_FAILURES = 3; // Number of failures before marking as disconnected
-const NEW_ENDPOINT_GRACE_PERIOD = 2 * 60 * 1000; // 2 minutes grace period for new endpoints
+const DNS_RESOLUTION_DELAY = 5000; // 5 seconds for DNS resolution
+const MAX_CONSECUTIVE_FAILURES = 5; // Maximum number of consecutive failures before marking endpoint as error
 
 class EndpointManager {
   private healthChecks: Map<string, EndpointHealth> = new Map();
   private checkIntervals: Map<string, number> = new Map();
   private metrics: Map<string, { requests: number; failures: number; totalTime: number }> = new Map();
   private listeners: Set<() => void> = new Set();
-  private consecutiveFailures: Map<string, number> = new Map();
   private activeChecks: Map<string, Promise<boolean>> = new Map();
   private monitoringRefs: Map<string, number> = new Map();
   private endpointStartTimes: Map<string, number> = new Map();
+  private isPaused: boolean = false;
+  private consecutiveFailures: Map<string, number> = new Map();
+  private isErrorState: Map<string, boolean> = new Map();
+
+  private async updateInstanceStatus(endpoint: string, status: 'error', errorMessage: string) {
+    try {
+      const { error } = await supabase
+        .from('ollama_instances')
+        .update({ 
+          status: status,
+          error: errorMessage
+        })
+        .eq('endpoint', endpoint);
+
+      if (error) throw error;
+    } catch (error) {
+      // Log error but don't throw - we don't want to break the health check flow
+      console.warn('Failed to update instance status:', 
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  pause() {
+    this.isPaused = true;
+    // Clear all existing intervals
+    this.checkIntervals.forEach((intervalId) => {
+      clearInterval(intervalId);
+    });
+    this.checkIntervals.clear();
+    this.notifyListeners();
+  }
+
+  resume() {
+    this.isPaused = false;
+    // Restart monitoring for all endpoints that have refs
+    this.monitoringRefs.forEach((_, endpoint) => {
+      this.startMonitoringInterval(endpoint);
+    });
+    this.notifyListeners();
+  }
+
+  isPausedState(): boolean {
+    return this.isPaused;
+  }
 
   async checkEndpointHealth(endpoint: string): Promise<boolean> {
+    if (this.isPaused) {
+      return false;
+    }
+
     if (!endpoint) return false;
 
     // If there's already an active check for this endpoint, return that promise
@@ -47,16 +96,14 @@ class EndpointManager {
         if (isHealthy) {
           this.consecutiveFailures.set(endpoint, 0);
         } else {
-          this.incrementFailures(endpoint);
+          this.handleFailure(endpoint);
         }
-        
+
         this.recordRequest(endpoint, isHealthy, responseTime);
         this.updateHealthStatus(endpoint, isHealthy, responseTime);
 
         return isHealthy;
       } catch (error) {
-        this.incrementFailures(endpoint);
-        
         if (error instanceof TypeError) {
           console.warn('Network error during health check:', error);
         } else if (error.name === 'AbortError') {
@@ -64,6 +111,8 @@ class EndpointManager {
         } else {
           console.error('Health check failed:', error);
         }
+
+        this.handleFailure(endpoint);
         
         this.recordRequest(endpoint, false, 0);
         this.updateHealthStatus(endpoint, false, undefined);
@@ -78,27 +127,37 @@ class EndpointManager {
     return checkPromise;
   }
 
-  private incrementFailures(endpoint: string) {
-    const current = this.consecutiveFailures.get(endpoint) || 0;
-    this.consecutiveFailures.set(endpoint, current + 1);
+  private async handleFailure(endpoint: string) {
+    const failures = (this.consecutiveFailures.get(endpoint) || 0) + 1;
+    this.consecutiveFailures.set(endpoint, failures);
+
+    // If we've reached max failures and haven't marked as error yet
+    if (failures >= MAX_CONSECUTIVE_FAILURES && !this.isErrorState.get(endpoint)) {
+      this.isErrorState.set(endpoint, true);
+      
+      // Pause health checks
+      this.pause();
+      
+      // Stop monitoring this endpoint
+      this.stopMonitoring(endpoint);
+      
+      // Update the instance status in the database
+      await this.updateInstanceStatus(endpoint, 'error', 
+        `Endpoint failed health check ${MAX_CONSECUTIVE_FAILURES} times consecutively`
+      );
+    }
   }
 
   private updateHealthStatus(endpoint: string, isConnected: boolean, responseTime?: number) {
     const metrics = this.metrics.get(endpoint);
-    const failures = this.consecutiveFailures.get(endpoint) || 0;
     const startTime = this.endpointStartTimes.get(endpoint);
-    const isInGracePeriod = startTime && (Date.now() - startTime) < NEW_ENDPOINT_GRACE_PERIOD;
-    
-    // Only consider connected if we have a successful health check
-    const actuallyConnected = isConnected;
+    const isWaitingForDNS = startTime && (Date.now() - startTime) < DNS_RESOLUTION_DELAY;
     
     const newHealth: EndpointHealth = {
-      isConnected: actuallyConnected,
+      isConnected: isConnected,
       lastChecked: new Date().toISOString(),
       responseTime,
-      consecutiveFailures: failures,
-      isInGracePeriod,
-      gracePeriodRemaining: isInGracePeriod ? NEW_ENDPOINT_GRACE_PERIOD - (Date.now() - startTime!) : 0,
+      isWaitingForDNS,
       metrics: metrics ? {
         totalRequests: metrics.requests,
         failedRequests: metrics.failures,
@@ -127,7 +186,7 @@ class EndpointManager {
     };
   }
 
-  startMonitoring(endpoint: string, isNewEndpoint: boolean = false) {
+  startMonitoring(endpoint: string, isNewEndpoint: boolean = false, delayStart: boolean = false) {
     if (!endpoint) return;
 
     // Increment reference count
@@ -135,19 +194,31 @@ class EndpointManager {
     this.monitoringRefs.set(endpoint, refCount);
 
     // If this endpoint is already being monitored, just return
+    // If this endpoint is already being monitored and we're not paused, just return
     if (refCount > 1) {
+      if (!this.isPaused) {
       return;
-    }
-
-    // For new endpoints, start the grace period and initialize as disconnected
-    if (isNewEndpoint) {
-      this.endpointStartTimes.set(endpoint, Date.now());
-      this.updateHealthStatus(endpoint, false, undefined);
+      }
     }
 
     // Start new monitoring
-    this.consecutiveFailures.set(endpoint, 0);
+    if (delayStart) {
+      // Wait for DNS resolution before starting health checks
+      this.endpointStartTimes.set(endpoint, Date.now());
+      this.updateHealthStatus(endpoint, false, undefined);
+      
+      setTimeout(() => {
+        if (!this.isPaused) {
+          this.endpointStartTimes.delete(endpoint);
+          this.startMonitoringInterval(endpoint);
+        }
+      }, DNS_RESOLUTION_DELAY);
+    } else if (!this.isPaused) {
+      this.startMonitoringInterval(endpoint);
+    }
+  }
 
+  private startMonitoringInterval(endpoint: string) {
     // Perform initial health check
     this.checkEndpointHealth(endpoint).catch(error => {
       console.error('Failed to perform initial health check:', error);
@@ -161,12 +232,15 @@ class EndpointManager {
         });
       }
     }, HEALTH_CHECK_INTERVAL);
-    
     this.checkIntervals.set(endpoint, intervalId);
   }
 
   stopMonitoring(endpoint: string) {
     if (!endpoint) return;
+
+    // Clear error state when stopping monitoring
+    this.isErrorState.delete(endpoint);
+    this.consecutiveFailures.delete(endpoint);
 
     // Decrement reference count
     const refCount = (this.monitoringRefs.get(endpoint) || 1) - 1;
@@ -187,8 +261,8 @@ class EndpointManager {
     // Clear all related data
     this.healthChecks.delete(endpoint);
     this.metrics.delete(endpoint);
-    this.consecutiveFailures.delete(endpoint);
     this.endpointStartTimes.delete(endpoint);
+    this.notifyListeners();
     
     // Cancel any active check
     const activeCheck = this.activeChecks.get(endpoint);
@@ -229,10 +303,12 @@ class EndpointManager {
     this.healthChecks.clear();
     this.metrics.clear();
     this.listeners.clear();
-    this.consecutiveFailures.clear();
     this.activeChecks.clear();
+    this.consecutiveFailures.clear();
+    this.isErrorState.clear();
     this.monitoringRefs.clear();
     this.endpointStartTimes.clear();
+    this.isPaused = false;
   }
 }
 

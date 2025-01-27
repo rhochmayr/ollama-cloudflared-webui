@@ -22,7 +22,7 @@ export function ChatHeader({ selectedModel, onOpenSettings, onSignOut, onClearCh
         <div className="flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <Bot className="h-6 w-6 text-indigo-600" />
-            <h1 className="text-xl font-semibold text-gray-900">Ollama Chat</h1>
+            <h1 className="text-xl font-semibold text-gray-900">Lily Chat</h1>
             {selectedModel && (
               <span className="ml-2 px-2 py-1 text-sm bg-indigo-100 text-indigo-800 rounded-md">
                 {selectedModel}

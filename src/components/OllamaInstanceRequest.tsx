@@ -13,6 +13,16 @@ interface StatusDisplayProps {
 function StatusDisplay({ instance, onRetry }: StatusDisplayProps) {
   const health = instance.endpoint ? endpointManager.getHealth(instance.endpoint) : null;
 
+  // Show DNS resolution message if we're waiting
+  if (health?.isWaitingForDNS) {
+    return (
+      <div className="flex items-center space-x-2 text-yellow-600">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span>Waiting for DNS resolution...</span>
+      </div>
+    );
+  }
+
   switch (instance.status) {
     case 'requested':
       return (
@@ -29,15 +39,6 @@ function StatusDisplay({ instance, onRetry }: StatusDisplayProps) {
         </div>
       );
     case 'ready':
-      if (health?.isInGracePeriod) {
-        const remainingSeconds = Math.ceil((health.gracePeriodRemaining || 0) / 1000);
-        return (
-          <div className="flex items-center space-x-2 text-indigo-600">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Connecting to Ollama instance... ({remainingSeconds}s)</span>
-          </div>
-        );
-      }
       return null;
     case 'error':
       return (
@@ -69,13 +70,13 @@ export function OllamaInstanceRequest() {
 
   // Show status display during grace period even if instance is 'ready'
   const shouldShowStatus = ollamaInstance && (
-    ollamaInstance.status !== 'ready' || 
-    (health?.isInGracePeriod && ollamaInstance.endpoint === ollamaEndpoint)
+    ollamaInstance.status !== 'ready' ||
+    (health?.isWaitingForDNS && ollamaInstance.endpoint === ollamaEndpoint)
   );
 
   // Only show request button if no instance or connection failed after grace period
   const shouldShowRequestButton = !ollamaEndpoint || 
-    (health && !health.isConnected && !health.isInGracePeriod);
+    (health && !health.isConnected && !health.isWaitingForDNS);
 
   return (
     <>

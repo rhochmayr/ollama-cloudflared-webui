@@ -21,6 +21,7 @@ export function Chat() {
   const {
     messages,
     addMessage,
+    fetchMessages,
     updateLastMessage,
     clearMessages,
     ollamaEndpoint,
@@ -47,7 +48,6 @@ export function Chat() {
         // Clear models when disconnected
         setModels([]);
         setSelectedModel('');
-        setError(null); // Clear error message when disconnected
       }
     });
 
@@ -57,6 +57,11 @@ export function Chat() {
     };
   }, [ollamaEndpoint]);
 
+  // Fetch existing messages on component mount
+  useEffect(() => {
+    fetchMessages();
+  }, []);
+
   const handleSubmit = async (message: string) => {
     if (!ollamaEndpoint || !selectedModel || loading) return;
 
@@ -64,8 +69,14 @@ export function Chat() {
     setError(null);
 
     try {
-      await addMessage(message, 'user');
-      await addMessage('', 'assistant');
+      // Add user message
+      const userMessage = await addMessage(message, 'user');
+      if (!userMessage) {
+        throw new Error('Failed to save user message');
+      }
+      
+      // Add empty assistant message to show typing state
+      updateLastMessage('');
 
       const response = await fetch('/api/proxy/generate', {
         method: 'POST',
@@ -91,11 +102,17 @@ export function Chat() {
       }
 
       const data = await response.json();
-      if (!data.response) {
-        throw new Error('Invalid response from Ollama API');
+      const fullResponse = data.response;
+      updateLastMessage(fullResponse);
+      
+      // Create the assistant message with the complete response
+      if (fullResponse) {
+        const assistantMessage = await addMessage(fullResponse.trim(), 'assistant');
+        if (!assistantMessage) {
+          throw new Error('Failed to save assistant message');
+        }
       }
 
-      updateLastMessage(data.response);
     } catch (error) {
       let errorMessage: string;
       if (error instanceof Error) {
@@ -180,6 +197,11 @@ export function Chat() {
     setLoadingModels(true);
     setError(null);
     try {
+      if (!endpoint) {
+        setModels([]);
+        return;
+      }
+
       const response = await fetch('/api/proxy/models', {
         headers: {
           'X-Ollama-Endpoint': endpoint
@@ -192,10 +214,14 @@ export function Chat() {
       }
 
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models: ${response.status}`);
+      }
+
       setModels(data.models || []);
     } catch (error) {
-      const health = endpointManager.getHealth(endpoint);
-      if (health?.isConnected) {
+      // Only show error if we have an endpoint but failed to fetch
+      if (endpoint) {
         const errorMessage = 'Failed to fetch available models. Please check your endpoint configuration.';
         setError(errorMessage);
         logError(errorMessage, {
@@ -207,8 +233,6 @@ export function Chat() {
           } : String(error)
         });
         console.error('Error fetching models:', error);
-      } else {
-        setError(null); // Clear error message if disconnected
       }
     } finally {
       setLoadingModels(false);

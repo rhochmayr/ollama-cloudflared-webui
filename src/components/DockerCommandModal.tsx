@@ -19,7 +19,7 @@ export function DockerCommandModal({ show, onClose, instanceId }: DockerCommandM
   -e SUPABASE_INSTANCE_ID="${instanceId}" \\
   -e SUPABASE_URL="${import.meta.env.VITE_SUPABASE_URL}" \\
   -e SUPABASE_ANON_KEY="${import.meta.env.VITE_SUPABASE_ANON_KEY}" \\
-  ollama-cloudflared:latest`;
+  ghcr.io/rhochmayr/ollama-cloudflared:latest`;
 
   const lilypadCommand = `lilypad run --target 0xdf8666e9ed7fe6f52ead2b201a5da7205a663725 \\
   github.com/rhochmayr/ollama-cloudflared:0.1.0 \\

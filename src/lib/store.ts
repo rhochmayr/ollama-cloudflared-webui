@@ -13,6 +13,7 @@ interface ChatStore {
   ollamaEndpoint: string;
   selectedModel: string;
   ollamaInstance: OllamaInstance | null;
+  init: () => Promise<void>;
   setOllamaEndpoint: (endpoint: string) => void;
   setSelectedModel: (model: string) => void;
   addMessage: (content: string, role: 'user' | 'assistant') => Promise<void>;
@@ -27,17 +28,51 @@ interface ChatStore {
 export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   isLoading: false,
-  ollamaEndpoint: localStorage.getItem('ollamaEndpoint') || '',
-  selectedModel: localStorage.getItem('selectedModel') || '',
+  ollamaEndpoint: '',
+  selectedModel: '',
   ollamaInstance: null,
 
+  init: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    try {
+      // Check for existing instance
+      const { data: instances, error } = await supabase
+        .from('ollama_instances')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'ready')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Get the most recent ready instance
+      const instance = instances?.[0];
+      
+      if (instance && instance.endpoint) {
+        // Start monitoring the endpoint
+        endpointManager.startMonitoring(instance.endpoint, true, true);
+
+        set({ 
+          ollamaInstance: instance,
+          ollamaEndpoint: instance.endpoint
+        });
+      }
+    } catch (error) {
+      // Only log real errors, not "no results" cases
+      if (error.code !== 'PGRST116') {
+        console.error('Failed to check for existing instance:', error);
+        await get().logError('Failed to check for existing instance', { error });
+      }
+    }
+  },
+
   setOllamaEndpoint: (endpoint: string) => {
-    localStorage.setItem('ollamaEndpoint', endpoint);
     set({ ollamaEndpoint: endpoint });
   },
 
   setSelectedModel: (model: string) => {
-    localStorage.setItem('selectedModel', model);
     set({ selectedModel: model });
   },
 
@@ -61,12 +96,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (error) {
       console.error('Error adding message:', error);
       await get().logError('Failed to add message', { error });
-      return;
+      return null;
     }
 
-    set(state => ({
-      messages: [...state.messages, data as Message],
-    }));
+    // Only update the messages array if this is a new message (not replacing a temp message)
+    if (role === 'user' || !get().messages.some(m => m.id === 'temp')) {
+      set(state => ({
+        messages: [...state.messages, data as Message],
+      }));
+    } else {
+      // Replace the temporary message with the real one
+      set(state => ({
+        messages: state.messages.map(m => 
+          m.id === 'temp' ? (data as Message) : m
+        ),
+      }));
+    }
+
+    return data as Message;
   },
 
   updateLastMessage: (content: string) => {
@@ -75,10 +122,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage.role === 'assistant') {
-          messages[messages.length - 1] = {
-            ...lastMessage,
-            content: content,
-          };
+          // Only update the message in the UI state
+          messages[messages.length - 1] = { ...lastMessage, content };
         }
       }
       return { messages };
@@ -142,6 +187,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   requestOllamaInstance: debounce(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    
+    // Pause health checks when requesting new instance
+    endpointManager.pause();
 
     try {
       const requestId = crypto.randomUUID();
@@ -213,7 +261,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       if (data.status === 'ready' && data.endpoint) {
         // When instance is ready, start monitoring the endpoint
-        endpointManager.startMonitoring(data.endpoint, true);
+        endpointManager.startMonitoring(data.endpoint, true, true);
         
         // Update local state with the new endpoint
         get().setOllamaEndpoint(data.endpoint);
@@ -226,13 +274,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             endpoint: data.endpoint
           }
         });
+
+        // Resume monitoring after DNS resolution delay
+        setTimeout(() => {
+          endpointManager.resume();
+        }, 5000);
       } else if (data.status === 'error') {
+        // Stop monitoring when instance is in error state
+        if (instance.endpoint) {
+          endpointManager.stopMonitoring(instance.endpoint);
+        }
+        
         set({ 
           ollamaInstance: {
             ...instance,
             status: 'error',
             error: data.error || 'Unknown error occurred'
-          }
+          },
+          ollamaEndpoint: '' // Clear the endpoint when in error state
         });
       } else {
         set({ ollamaInstance: data });

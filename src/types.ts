@@ -42,9 +42,7 @@ export interface EndpointHealth {
   isConnected: boolean;
   lastChecked: string;
   responseTime?: number;
-  consecutiveFailures?: number;
-  isInGracePeriod?: boolean;
-  gracePeriodRemaining?: number;
+  isWaitingForDNS?: boolean;
   metrics?: {
     totalRequests: number;
     failedRequests: number;

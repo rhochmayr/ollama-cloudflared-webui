@@ -92,7 +92,7 @@ export function SettingsModal({
           </div>
         )}
 
-        {error && health?.isConnected && (
+        {error && (
           <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-md flex items-start space-x-2">
             <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-400" />
             <span className="text-sm">{error}</span>

@@ -1,188 +1,217 @@
-# Ollama Cloudflared WebUI
-This WebUI is part a personal Proof of Concept (PoC) project for the Lilypad Network.
-The goal of this PoC is to demonstrate the feasibility of using Cloudflared (Quicktunnels) to tunnel traffic from a Lilypad module to a cloud-based service.
-In this instance we are requesting on-demand Ollama endpoints on a GPU enabled Lilypad Resource Provider and establish a connection to the Chat WebUI.
+# Lily Chat 🌸
 
-## Table of Contents
-- [Features](#features)
-- [Technologies Used](#technologies-used)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Configuration](#configuration)
-  - [Running the Application](#running-the-application)
-- [How It Works](#how-it-works)
-  - [Instance Request Flow](#instance-request-flow)
-  - [Sequence Diagram](#sequence-diagram)
-- [Instance Setup](#instance-setup)
-  - [Local Docker Setup](#local-docker-setup)
-  - [Lilypad Network Setup](#lilypad-network-setup)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
+A modern, secure chat application powered by Ollama for local AI model inference. Built with React, TypeScript, and Supabase.
 
 ## Features
-- Real-time chat interface with user and assistant roles
-- Authentication using Supabase
-- Connection status monitoring
-- Settings and configuration management
-- Automated Ollama instance provisioning via Lilypad network
-- Real-time instance status tracking
-- Dynamic endpoint configuration
-- Error handling and logging
 
-## Technologies Used
-- [React](src/App.tsx)
-- [TypeScript](src/types.ts)
-- [Express](server.js)
-- [Supabase](src/lib/supabase.ts)
-- [Vite](vite.config.ts)
-- [Tailwind CSS](tailwind.config.js)
-- [ESLint](eslint.config.js)
+- 🔒 Secure authentication with email/password
+- 🤖 Local AI model integration via Ollama
+- 💬 Real-time chat interface with markdown support
+- 🔄 Automatic health monitoring of Ollama instances
+- 🚀 Docker and Lilypad deployment options
+- 🎨 Beautiful, responsive UI with Tailwind CSS
+- ⚡ Vite-powered development experience
+
+## Tech Stack
+
+- **Frontend**: React, TypeScript, Tailwind CSS
+- **Backend**: Express.js proxy server
+- **Database**: Supabase (PostgreSQL)
+- **Authentication**: Supabase Auth
+- **AI Integration**: Ollama API
+- **Icons**: Lucide React
+- **Development**: Vite, ESLint
 
 ## Getting Started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) v14 or later
-- [npm](https://www.npmjs.com/)
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/ollama-cloudflared-webui.git
-   ```
-2. Navigate to the project directory:
-   ```bash
-   cd ollama-cloudflared-webui
-   ```
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
+- Node.js 18+
+- Supabase account
+- Ollama instance (local or remote)
 
-### Configuration
-Rename `.env.example` to `.env.local` and fill in your Supabase credentials:
+### Environment Setup
 
-```bash
-VITE_SUPABASE_URL=https://<instance>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon_key>
+Create a `.env` file in the root directory:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-### Running the Application
-Start the development server:
+### Installation
 
 ```bash
+# Install dependencies
+npm install
+
+# Start the development server
 npm run dev
 ```
 
-The application will be available at `http://localhost:5173`.
+## Architecture
 
-## How It Works
+### Core Components
 
-### Instance Request Flow
-1. User authenticates with the WebUI using Supabase
-2. User requests a new Ollama instance through the interface
-3. WebUI generates either a Docker command or Lilypad command based on user preferences
-4. User executes the command on their machine or Lilypad network
-5. The started instance registers itself with Supabase
-6. WebUI detects the available endpoint and enables chat functionality
+1. **Authentication (`Auth.tsx`)**
+   - Handles user signup/signin
+   - Manages authentication state
 
-### Sequence Diagram
+2. **Chat Interface (`Chat/`)**
+   - `ChatHeader`: Navigation and model selection
+   - `ChatInput`: Message input with connection status
+   - `ChatMessages`: Message display with markdown support
+   - `SettingsModal`: Model and endpoint configuration
+
+3. **Ollama Integration**
+   - Instance management
+   - Health monitoring
+   - Model selection
+   - Message generation
+
+### State Management
+
+- Uses Zustand for global state management
+- Manages chat messages, Ollama endpoint, and selected model
+- Handles error logging and instance status
+
+### Database Schema
+
+1. **Messages**
+   - Stores chat history
+   - Links messages to users
+   - Supports conversation threading
+
+2. **Error Logs**
+   - Tracks system errors
+   - Helps with debugging and monitoring
+
+3. **Ollama Instances**
+   - Manages Ollama instance lifecycle
+   - Tracks instance status and endpoints
+
+### Security Features
+
+- Row Level Security (RLS) on all tables
+- Authenticated API endpoints
+- Secure proxy for Ollama API
+- Error handling and sanitization
+
+## Development
+
+### Project Structure
+
+```
+src/
+├── components/     # React components
+├── lib/           # Utilities and store
+├── types/         # TypeScript definitions
+└── main.tsx       # Application entry
+```
+
+### Key Files
+
+- `server.js`: Express proxy server
+- `endpoint.ts`: Ollama instance management
+- `store.ts`: Global state management
+- `types.ts`: TypeScript interfaces
+
+### Running Tests
+
+```bash
+npm run test
+```
+
+### Building for Production
+
+```bash
+npm run build
+```
+
+## Deployment
+
+### Docker Deployment
+
+```bash
+docker run -d --gpus=all \
+  -e SUPABASE_INSTANCE_ID="your_instance_id" \
+  -e SUPABASE_URL="your_supabase_url" \
+  -e SUPABASE_ANON_KEY="your_anon_key" \
+  ghcr.io/rhochmayr/ollama-cloudflared:latest
+```
+
+### Lilypad Deployment
+
+```bash
+lilypad run --target your_target \
+  github.com/rhochmayr/ollama-cloudflared:0.1.0 \
+  -i SUPABASE_INSTANCE_ID="your_instance_id" \
+  -i SUPABASE_URL="your_supabase_url" \
+  -i SUPABASE_ANON_KEY="your_anon_key"
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
+
+## License
+
+MIT License - feel free to use this project for your own purposes.
+
+## Acknowledgments
+
+- Built with [Vite](https://vitejs.dev/)
+- UI components powered by [Tailwind CSS](https://tailwindcss.com/)
+- Icons from [Lucide](https://lucide.dev/)
+- Database and auth by [Supabase](https://supabase.com/)
+- AI capabilities by [Ollama](https://ollama.ai/)
+
+## System Flow
+
 ```mermaid
 sequenceDiagram
     participant User
     participant WebUI
     participant Supabase
-    participant OllamaInstance
-    participant LilypadNetwork
+    participant Runner as Docker/Lilypad
+    participant Ollama
 
-    User->>WebUI: Login
-    WebUI->>Supabase: Authenticate
-    User->>WebUI: Request Ollama Instance
-    WebUI-->>User: Generate Command
-    
-    alt Lilypad Deployment
-        User->>LilypadNetwork: Execute Lilypad Command
-        LilypadNetwork->>OllamaInstance: Start Instance
-    else Local Deployment
-        User->>OllamaInstance: Execute Docker Command
+    %% Authentication Flow
+    User->>WebUI: Sign in/Sign up
+    WebUI->>Supabase: Authenticate user
+    Supabase-->>WebUI: Return auth token
+
+    %% Instance Request Flow
+    User->>WebUI: Request Ollama instance
+    WebUI->>Supabase: Create instance request
+    Supabase->>Runner: Trigger instance creation
+    Runner->>Ollama: Start Ollama server
+    Runner->>Supabase: Update instance status
+    Supabase-->>WebUI: Return instance endpoint
+
+    %% Chat Flow
+    User->>WebUI: Send message
+    WebUI->>Supabase: Store user message
+    WebUI->>Ollama: Generate response
+    Ollama-->>WebUI: Return AI response
+    WebUI->>Supabase: Store AI response
+    WebUI-->>User: Display response
+
+    %% Health Monitoring
+    loop Every 3 seconds
+        WebUI->>Ollama: Health check
+        Ollama-->>WebUI: Status update
+        WebUI->>Supabase: Update instance health
     end
-
-    OllamaInstance->>Supabase: Register Endpoint
-    Supabase-->>WebUI: Notify Instance Ready
-    WebUI-->>User: Enable Chat Interface
-    
-    loop Chat Session
-        User->>WebUI: Send Message
-        WebUI->>OllamaInstance: Forward to LLM
-        OllamaInstance-->>WebUI: Stream Response
-        WebUI-->>User: Display Response
-    end
 ```
 
-## Instance Setup
+The diagram above shows the main interaction flows in the system:
 
-### Local Docker Setup
-When using the local Docker setup, the WebUI will generate a command like:
-```bash
-docker run -d --gpus=all \
-  -e SUPABASE_URL=https://<your instance>.supabase.co \
-  -e INSTANCE_ID=<generated-id> \
-  -e SUPABASE_ANON_KEY=<anon-key> \
-  ghcr.io/rhochmayr/ollama-cloudflared:latest
-```
-
-### Lilypad Network Setup
-For Lilypad network deployment, you'll receive a command like:
-```bash
-lilypad run --target <0x network enabled node address> \
-  github.com/rhochmayr/ollama-cloudflared:0.1.0 \
-  -i SUPABASE_INSTANCE_ID="<generated-id>" \
-  -i SUPABASE_URL="https://<your instance>.supabase.co" \
-  -i SUPABASE_ANON_KEY=<anon_key>
-```
-
-The instance will automatically:
-1. Start the Ollama server
-2. Establish a Cloudflare tunnel
-3. Register the endpoint in Supabase
-4. Begin accepting chat requests
-
-## Project Structure
-```
-ollama-cloudflared-webui/
-├── .env
-├── index.html
-├── server.js
-├── src/
-│   ├── App.tsx
-│   ├── components/
-│   │   ├── Auth.tsx
-│   │   ├── Chat/
-│   │   │   ├── ChatHeader.tsx
-│   │   │   ├── ChatMessages.tsx
-│   │   │   └── index.tsx
-│   │   ├── ConfirmationModal.tsx
-│   │   ├── ConnectionStatus.tsx
-│   │   ├── DockerCommandModal.tsx
-│   │   ├── ErrorBoundary.tsx
-│   │   └── OllamaInstanceRequest.tsx
-│   ├── index.css
-│   ├── lib/
-│   │   ├── endpoint.ts
-│   │   ├── store.ts
-│   │   ├── supabase.ts
-│   │   └── utils.ts
-│   ├── main.tsx
-│   ├── types.ts
-│   └── vite-env.d.ts
-├── supabase/
-    └── migrations/
-        └── 20250117234308_withered_heart.sql
-```
-
-## Contributing
-Contributions are welcome! Please submit a pull request or open an issue to discuss changes.
-
-## License
-This project is licensed under the MIT License.
+1. **Authentication**: User authentication through Supabase
+2. **Instance Creation**: Ollama instance deployment via Docker or Lilypad
+3. **Chat Flow**: Message handling and AI response generation
+4. **Health Monitoring**: Continuous instance health checking
